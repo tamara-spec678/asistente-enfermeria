@@ -12,10 +12,15 @@ st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 st.info("Protocolos HNRG y Seguridad del Paciente")
 
-# Configuración de API
+# CONFIGURACIÓN DE SEGURIDAD PARA EVITAR EL ERROR 404
 if "GOOGLE_API_KEY" in st.secrets:
-    # AQUÍ ESTÁ EL CAMBIO CLAVE: Forzamos la versión estable v1
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"], transport='rest')
+    # Esta línea es la clave: fuerza el uso de la versión estable 'v1'
+    client_options = {'api_version': 'v1'}
+    genai.configure(
+        api_key=st.secrets["GOOGLE_API_KEY"],
+        transport='rest',
+        client_options=client_options
+    )
 else:
     st.error("Falta la clave API en los Secrets de Streamlit.")
 
@@ -41,12 +46,14 @@ if st.button("Consultar Protocolos"):
             try:
                 contexto, cantidad = leer_protocolos()
                 if cantidad == 0:
-                    st.error("No encontré los archivos. Revisá que estén en GitHub.")
+                    st.error("No encontré los archivos. Verificá que los nombres en GitHub sean idénticos.")
                 else:
-                    # Usamos el nombre de modelo más genérico
-                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                    response = model.generate_content(f"Usa esto: {contexto}\nPregunta: {pregunta}")
+                    # Usamos el nombre base del modelo
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    response = model.generate_content(f"Sos un asistente experto. Usando este material: {contexto}\n\nPregunta: {pregunta}")
                     st.markdown("### 📋 Respuesta:")
                     st.write(response.text)
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error de conexión: {e}")
+    else:
+        st.warning("Por favor, escribí una consulta.")
