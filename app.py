@@ -40,15 +40,14 @@ if st.button("Consultar Protocolos"):
             try:
                 contexto, cantidad = leer_protocolos()
                 if cantidad == 0:
-                    st.error("No encontré los archivos. Verificá que los nombres en GitHub sean exactos.")
+                    st.error("No encontré los archivos PDF en tu GitHub. Verificá los nombres.")
                 else:
-                    # USAMOS EL MODELO CON SU NOMBRE COMPLETO PARA EVITAR ERRORES
-                    model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
+                    # CAMBIO CLAVE: Usamos 'gemini-pro', el modelo más compatible
+                    model = genai.GenerativeModel('gemini-pro')
                     response = model.generate_content(f"Sos un asistente experto. Usando este material: {contexto}\n\nPregunta: {pregunta}")
                     st.markdown("### 📋 Respuesta:")
                     st.write(response.text)
             except Exception as e:
-                # Si esto falla, mostramos el error real para saber qué pasa
                 st.error(f"Error de conexión: {e}")
     else:
         st.warning("Por favor, escribí una consulta.")
