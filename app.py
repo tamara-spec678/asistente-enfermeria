@@ -52,7 +52,7 @@ if st.button("Consultar Protocolos"):
                 if cantidad == 0:
                     st.error("No se encontraron los archivos PDF en GitHub. Revisá que los nombres coincidan exactamente.")
                 else:
-                    model = genai.GenerativeModel('gemini-pro')
+                   model = genai.GenerativeModel('gemini-1.5-flash')
                     prompt = f"Sos un enfermero experto. Respondé de forma técnica usando este material: {contexto}\n\nPregunta: {pregunta}"
                     response = model.generate_content(prompt)
                     st.markdown("### 📋 Respuesta del Asistente:")
