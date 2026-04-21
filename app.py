@@ -12,15 +12,9 @@ st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 st.info("Protocolos HNRG y Seguridad del Paciente")
 
-# CONFIGURACIÓN DE SEGURIDAD PARA EVITAR EL ERROR 404
+# CONFIGURACIÓN BÁSICA
 if "GOOGLE_API_KEY" in st.secrets:
-    # Esta línea es la clave: fuerza el uso de la versión estable 'v1'
-    client_options = {'api_version': 'v1'}
-    genai.configure(
-        api_key=st.secrets["GOOGLE_API_KEY"],
-        transport='rest',
-        client_options=client_options
-    )
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 else:
     st.error("Falta la clave API en los Secrets de Streamlit.")
 
@@ -46,14 +40,15 @@ if st.button("Consultar Protocolos"):
             try:
                 contexto, cantidad = leer_protocolos()
                 if cantidad == 0:
-                    st.error("No encontré los archivos. Verificá que los nombres en GitHub sean idénticos.")
+                    st.error("No encontré los archivos. Verificá que los nombres en GitHub sean exactos.")
                 else:
-                    # Usamos el nombre base del modelo
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    # USAMOS EL MODELO CON SU NOMBRE COMPLETO PARA EVITAR ERRORES
+                    model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
                     response = model.generate_content(f"Sos un asistente experto. Usando este material: {contexto}\n\nPregunta: {pregunta}")
                     st.markdown("### 📋 Respuesta:")
                     st.write(response.text)
             except Exception as e:
+                # Si esto falla, mostramos el error real para saber qué pasa
                 st.error(f"Error de conexión: {e}")
     else:
         st.warning("Por favor, escribí una consulta.")
