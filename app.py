@@ -18,40 +18,50 @@ def extraer_texto():
                 for page in pdf.pages:
                     texto += (page.extract_text() or "") + " "
             except: pass
-    # Recortamos un poco el texto por si es muy largo para la API gratuita
-    return texto[:30000] 
+    return texto[:30000]
 
 if not api_key:
-    st.error("⚠️ Falta la clave API en Secrets.")
+    st.error("⚠️ Configura la clave API en Secrets.")
 else:
+    # 1. Función para encontrar qué modelo tenés activo de esos 38
+    def obtener_modelo_valido():
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            res = requests.get(url).json()
+            for m in res.get('models', []):
+                # Buscamos uno que sea 'gemini' y que permita generar contenido
+                if 'gemini' in m['name'] and 'generateContent' in m['supportedGenerationMethods']:
+                    return m['name'] # Retorna algo como 'models/gemini-1.5-flash-latest'
+            return None
+        except:
+            return None
+
     consulta = st.text_input("¿Qué consulta técnica tenés?")
 
     if st.button("Consultar Protocolos"):
         if consulta:
-            with st.spinner("Buscando en los protocolos del hospital..."):
-                try:
-                    contexto = extraer_texto()
-                    # Usamos el modelo más estable de los 38 que tenés
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-                    
-                    payload = {
-                        "contents": [{
-                            "parts": [{"text": f"Sos enfermero del Hospital Gutiérrez. Usá este contexto: {contexto}\n\nPregunta: {consulta}"}]
-                        }]
-                    }
-                    
-                    response = requests.post(url, json=payload)
-                    
-                    # Verificamos si la respuesta no está vacía
-                    if response.text:
+            with st.spinner("Conectando con Google AI..."):
+                modelo_activo = obtener_modelo_valido()
+                
+                if not modelo_activo:
+                    st.error("No se encontró un modelo compatible en tu cuenta.")
+                else:
+                    try:
+                        contexto = extraer_texto()
+                        # Usamos el nombre exacto que Google nos dio
+                        url = f"https://generativelanguage.googleapis.com/v1beta/{modelo_activo}:generateContent?key={api_key}"
+                        
+                        payload = {
+                            "contents": [{"parts": [{"text": f"Contexto HNRG: {contexto}\n\nPregunta: {consulta}"}]}]
+                        }
+                        
+                        response = requests.post(url, json=payload)
                         data = response.json()
+                        
                         if response.status_code == 200:
-                            st.success("✅ Protocolo encontrado:")
+                            st.success(f"✅ Respuesta (vía {modelo_activo.split('/')[-1]}):")
                             st.write(data['candidates'][0]['content']['parts'][0]['text'])
                         else:
-                            st.error(f"Error de Google: {data.get('error', {}).get('message')}")
-                    else:
-                        st.error("El servidor de Google no envió datos. Intentá con una pregunta más corta.")
-                        
-                except Exception as e:
-                    st.error(f"Error de conexión: {e}")
+                            st.error(f"Google dice: {data['error']['message']}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
