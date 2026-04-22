@@ -6,49 +6,46 @@ import os
 st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥")
 
 st.title("Asistente de Enfermería 🏥")
+st.caption("Hospital de Niños Ricardo Gutiérrez")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 @st.cache_data(ttl=3600)
-def extraer_datos_optimizados(busqueda=""):
-    texto_relevante = ""
+def buscar_en_manuales(consulta_palabra):
+    texto_hallado = ""
     archivos = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
-    encontrados = []
-
+    
     for archivo in archivos:
         try:
             reader = PdfReader(archivo)
             for page in reader.pages:
                 content = page.extract_text()
-                if content:
-                    # SI NO HAY BUSQUEDA, TOMAMOS UN POCO DE CADA PAGINA
-                    # SI HAY BUSQUEDA, SOLO TOMAMOS DONDE APARECE LA PALABRA
-                    if not busqueda or busqueda.lower() in content.lower():
-                        texto_relevante += content + " "
-            encontrados.append(archivo)
+                if content and consulta_palabra.lower() in content.lower():
+                    texto_hallado += content + " "
+                    if len(texto_hallado) > 20000: break # Seguridad para no saturar
         except: pass
-    
-    # LIMITAMOS A 15.000 CARACTERES (Súper liviano para que la clave gratuita vuele)
-    return texto_relevante[:15000], encontrados
+    return texto_hallado[:25000]
 
 if not api_key:
-    st.error("Configurá la API Key.")
+    st.error("Falta la API Key.")
 else:
-    consulta = st.text_input("Ingresá fármaco o técnica (ej: Dipirona):")
+    consulta = st.text_input("Ingresá tu duda técnica (ej: Dipirona):")
 
     if st.button("Consultar"):
         if consulta:
-            with st.spinner("Buscando de forma ultra-rápida..."):
-                # Primero extraemos solo lo que sirve para esa consulta
-                txt_recortado, lista = extraer_datos_optimizados(consulta.split()[0]) # Busca la primera palabra
+            with st.spinner("Buscando en protocolos..."):
+                # Filtramos el texto antes de mandarlo a la IA
+                palabra_clave = consulta.split()[0]
+                contexto = buscar_en_manuales(palabra_clave)
                 
                 try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+                    # USAMOS EL MODELO FLASH QUE ES MÁS TOLERANTE CON LA CLAVE GRATUITA
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                     
                     payload = {
                         "contents": [{
                             "parts": [{
-                                "text": f"Basado en este fragmento del manual: {txt_recortado}. Respondé de forma muy breve a: {consulta}"
+                                "text": f"Contexto de los manuales del hospital: {contexto}\n\nPregunta: {consulta}\n\nResponde de forma técnica y breve."
                             }]
                         }]
                     }
@@ -58,10 +55,12 @@ else:
                     
                     if "candidates" in data:
                         res = data["candidates"][0]["content"]["parts"][0]["text"]
-                        st.info(res)
+                        st.markdown(f"**Respuesta:**")
+                        st.success(res)
                     else:
-                        st.error("Google sigue pidiendo un respiro. Esperá 30 segundos y probá de nuevo.")
+                        # Si falla, le avisamos al usuario que espere un poquito
+                        st.error("Google está procesando muchas consultas. Esperá 30 segundos y volvé a presionar el botón.")
                 except:
-                    st.error("Error de conexión.")
+                    st.error("Error de conexión. Reintentá.")
 
-st.sidebar.caption("Modo de bajo consumo de datos activo.")
+st.sidebar.info("Consejo: Si da error, esperá 30 segundos. Es el límite de la versión gratuita de Google.")
