@@ -3,10 +3,8 @@ import requests
 from pypdf import PdfReader
 import os
 
-# Configuración de la página
 st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥", layout="wide")
 
-# Estilo visual profesional y limpio
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -25,24 +23,21 @@ st.markdown("""
         border-left: 6px solid #1e4f8a;
         box-shadow: 2px 2px 8px rgba(0,0,0,0.05);
         color: #333;
-        line-height: 1.6;
     }
-    h1 { color: #1e4f8a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    h1 { color: #1e4f8a; }
     </style>
     """, unsafe_allow_html=True)
 
-# TÍTULO PRINCIPAL SOLICITADO
 st.title("Asistente de Enfermería")
 st.write("Consulta técnica basada en Guías de Práctica y Protocolos de Seguridad.")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 def extraer_datos_hospital():
-    """Busca y lee los PDFs en el repositorio de forma inteligente"""
     texto_total = ""
     archivos_en_carpeta = os.listdir('.')
-    # Buscamos por palabras clave para evitar errores por nombres largos
-    nombres_clave = ["Seguridad", "Guía", "292", "2023", "enfermeria", "drogas"]
+    # Expandimos las claves para que encuentre el Manual de Técnicas y Procedimientos
+    nombres_clave = ["Seguridad", "Guía", "292", "2023", "enfermeria", "drogas", "procedimientos", "tecnicas"]
     encontrados = []
 
     for archivo in archivos_en_carpeta:
@@ -56,12 +51,12 @@ def extraer_datos_hospital():
                 encontrados.append(archivo)
             except:
                 pass
-    return texto_total[:45000], encontrados
+    # Aumentamos un poquito el límite de texto para que entre la info del manual nuevo
+    return texto_total[:55000], encontrados
 
 if not api_key:
-    st.error("Configuración pendiente: Falta la API Key en los Secrets.")
+    st.error("Configuración pendiente: Falta la API Key.")
 else:
-    # Sidebar de estado (Mantiene el control visual de los archivos)
     with st.sidebar:
         st.header("Panel de Control")
         txt, lista = extraer_datos_hospital()
@@ -72,30 +67,26 @@ else:
         else:
             st.error("No se detectaron archivos PDF.")
 
-    # Campo de entrada
-    consulta = st.text_input("Ingresá tu consulta técnica:", placeholder="Ej: Dilución de fármacos, protocolos de seguridad...")
+    consulta = st.text_input("Ingresá tu consulta técnica:", placeholder="Ej: Pasos para un procedimiento, dilución de drogas...")
 
     if st.button("Consultar"):
         if not consulta:
             st.warning("Por favor, ingresá una pregunta.")
         else:
-            with st.spinner("Buscando en la bibliografía cargada..."):
+            with st.spinner("Buscando en los manuales y protocolos..."):
                 try:
-                    # Detectar modelo activo (Gemini 2.5 Flash o similar)
                     res_models = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}").json()
                     modelo_activo = next((m['name'] for m in res_models.get('models', []) if 'gemini' in m['name'] and 'generateContent' in m['supportedGenerationMethods']), None)
                     
                     if modelo_activo and txt:
                         url = f"https://generativelanguage.googleapis.com/v1beta/{modelo_activo}:generateContent?key={api_key}"
                         
-                        # INSTRUCCIONES: Profesional, directo y neutral
                         instrucciones = (
                             f"Actuá como un Asistente Técnico de Enfermería experto. "
                             f"Tu tono debe ser profesional, preciso y directo. "
                             f"USÁ ESTA BIBLIOGRAFÍA EXCLUSIVAMENTE: {txt}. "
-                            f"Si se consulta sobre un fármaco, detallá dilución, tiempos y cuidados de forma esquemática. "
+                            f"Detallá pasos, materiales y cuidados de forma esquemática. "
                             f"Si la información no está en el texto, informá: 'Esa información no se encuentra en las guías cargadas'. "
-                            f"Mantené la neutralidad y no menciones nombres de instituciones específicas. "
                             f"Consulta: {consulta}"
                         )
                         
@@ -107,11 +98,11 @@ else:
                             st.markdown("### 📋 Información técnica:")
                             st.markdown(f'<div class="chat-bubble">{data["candidates"][0]["content"]["parts"][0]["text"]}</div>', unsafe_allow_html=True)
                         else:
-                            st.error("Error en la comunicación con el servidor de IA.")
+                            st.error("Error en la comunicación con la IA.")
                     elif not txt:
-                        st.error("Error: No se pudo procesar la bibliografía (PDFs no encontrados).")
+                        st.error("Error: No se pudo leer la bibliografía.")
                 except Exception as e:
-                    st.error(f"Error técnico de conexión: {e}")
+                    st.error(f"Error técnico: {e}")
 
 st.markdown("---")
 st.caption("Herramienta de soporte para la gestión del cuidado y seguridad del paciente.")
