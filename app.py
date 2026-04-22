@@ -1,21 +1,17 @@
 import streamlit as st
 import google.generativeai as genai
-from google.generativeai import client
 from pypdf import PdfReader
 import os
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# Configuración de página
 st.set_page_config(page_title="Asistente HNRG", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 
-# 1. Bypass del Error 404
+# 1. Configuración de la API (Forma más simple posible)
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    # ESTO ES LO NUEVO: Obligamos a usar la versión estable 'v1' y no la 'v1beta'
-    c = client.get_default_generative_client()
-    c._client_options.api_version = 'v1'
 else:
-    st.error("Falta la clave API en Secrets.")
+    st.error("Falta la clave API en los Secrets.")
 
 def extraer_texto():
     texto_total = ""
@@ -26,23 +22,24 @@ def extraer_texto():
                 reader = PdfReader(arc)
                 for page in reader.pages:
                     texto_total += (page.extract_text() or "") + "\n"
-            except Exception: pass
+            except: pass
     return texto_total
 
-consulta = st.text_input("¿En qué te puedo ayudar hoy?")
+consulta = st.text_input("¿Qué consulta técnica tenés?")
 
 if st.button("Consultar"):
     if consulta:
-        with st.spinner("Buscando información..."):
+        with st.spinner("Buscando..."):
             try:
                 contexto = extraer_texto()
-                if not contexto:
-                    st.error("No se leyeron los PDFs. Revisá que estén en GitHub.")
-                else:
-                    # Usamos el modelo estable
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    response = model.generate_content(f"Protocolos: {contexto}\nPregunta: {consulta}")
-                    st.success("Respuesta:")
-                    st.write(response.text)
+                # CAMBIO CLAVE: Usamos 'gemini-pro' que es el más compatible
+                model = genai.GenerativeModel('gemini-pro')
+                
+                prompt = f"Actuá como enfermero del HNRG. Usá este texto: {contexto}\n\nPregunta: {consulta}"
+                
+                response = model.generate_content(prompt)
+                st.success("Respuesta:")
+                st.write(response.text)
             except Exception as e:
-                st.error(f"Error persistente: {e}")
+                # Esto nos va a decir exactamente qué versión está fallando ahora
+                st.error(f"Error: {e}")
