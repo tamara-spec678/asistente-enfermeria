@@ -6,6 +6,7 @@ import os
 st.set_page_config(page_title="Asistente HNRG", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 
+# Recuperamos la clave
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 def extraer_texto():
@@ -14,44 +15,38 @@ def extraer_texto():
     for arc in archivos:
         if os.path.exists(arc):
             try:
-                reader = PdfReader(arc)
-                for page in reader.pages:
+                pdf = PdfReader(arc)
+                for page in pdf.pages:
                     texto += (page.extract_text() or "") + "\n"
             except: pass
     return texto
 
-consulta = st.text_input("¿En qué puedo ayudarte?")
+consulta = st.text_input("¿Qué duda técnica tenés?")
 
 if st.button("Consultar"):
     if not api_key:
-        st.error("Falta la clave API.")
+        st.error("Falta la clave API en los Secrets.")
     elif consulta:
         with st.spinner("Buscando en protocolos..."):
-            contexto = extraer_texto()
-            # PROBAMOS VARIOS MODELOS POR SI UNO FALLA
-            modelos_a_probar = [
-                "gemini-1.5-flash",
-                "gemini-pro",
-                "gemini-1.0-pro"
-            ]
-            
-            exito = False
-            for mod in modelos_a_probar:
-                if exito: break
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
-                payload = {"contents": [{"parts": [{"text": f"Contexto: {contexto}\n\nPregunta: {consulta}"}]}]}
+            try:
+                contexto = extraer_texto()
+                # Esta es la URL más básica y estable de todas
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
-                try:
-                    res = requests.post(url, json=payload)
-                    if res.status_code == 200:
-                        data = res.json()
-                        st.success(f"✅ Respuesta (usando modelo: {mod})")
-                        st.write(data['candidates'][0]['content']['parts'][0]['text'])
-                        exito = True
-                    else:
-                        continue # Si da error 404, prueba el siguiente modelo
-                except:
-                    continue
-            
-            if not exito:
-                st.error("Google no reconoce ningún modelo con tu clave. Por favor, generá una nueva clave en AI Studio.")
+                payload = {
+                    "contents": [{
+                        "parts": [{"text": f"Actuá como enfermero del HNRG. Usá este texto como base: {contexto}\n\nPregunta: {consulta}"}]
+                    }]
+                }
+                
+                response = requests.post(url, json=payload)
+                data = response.json()
+                
+                if response.status_code == 200:
+                    st.success("✅ ¡Logramos la conexión!")
+                    st.write(data['candidates'][0]['content']['parts'][0]['text'])
+                else:
+                    # Si falla, nos va a decir exactamente qué falta habilitar
+                    st.error(f"Detalle del error: {data['error']['message']}")
+            except Exception as e:
+                st.error(f"Error inesperado: {e}")
