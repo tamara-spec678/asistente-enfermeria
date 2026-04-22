@@ -16,59 +16,42 @@ def extraer_texto():
             try:
                 pdf = PdfReader(arc)
                 for page in pdf.pages:
-                    texto += (page.extract_text() or "") + "\n"
+                    texto += (page.extract_text() or "") + " "
             except: pass
-    return texto
+    # Recortamos un poco el texto por si es muy largo para la API gratuita
+    return texto[:30000] 
 
 if not api_key:
-    st.error("⚠️ No se encontró la clave API en los Secrets de Streamlit.")
+    st.error("⚠️ Falta la clave API en Secrets.")
 else:
-    # 1. PASO MÉDICO: Ver qué modelos están "vivos" para tu clave
-    with st.expander("🩺 Estado de la conexión con Google"):
-        try:
-            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            res_list = requests.get(list_url)
-            modelos_data = res_list.json()
-            
-            if res_list.status_code == 200:
-                # Sacamos la lista de nombres de modelos disponibles
-                modelos_disponibles = [m['name'] for m in modelos_data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
-                st.success(f"Conexión activa. Modelos encontrados: {len(modelos_disponibles)}")
-                # Elegimos el mejor disponible automáticamente
-                modelo_a_usar = modelos_disponibles[0] if modelos_disponibles else None
-            else:
-                st.error(f"Error de validación: {modelos_data.get('error', {}).get('message')}")
-                modelo_a_usar = None
-        except:
-            st.error("No se pudo contactar al servidor de Google.")
-            modelo_a_usar = None
-
-    # 2. INTERFAZ DE CONSULTA
     consulta = st.text_input("¿Qué consulta técnica tenés?")
 
     if st.button("Consultar Protocolos"):
-        if not modelo_a_usar:
-            st.error("No hay modelos disponibles. Revisá tu API Key en AI Studio.")
-        elif not consulta:
-            st.warning("Escribí una consulta.")
-        else:
-            with st.spinner("Procesando..."):
+        if consulta:
+            with st.spinner("Buscando en los protocolos del hospital..."):
                 try:
                     contexto = extraer_texto()
-                    # Usamos el modelo que el sistema detectó como activo
-                    url = f"https://generativelanguage.googleapis.com/{modelo_a_usar}:generateContent?key={api_key}"
+                    # Usamos el modelo más estable de los 38 que tenés
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                     
                     payload = {
-                        "contents": [{"parts": [{"text": f"Basándote en este contexto del HNRG: {contexto}\n\nPregunta: {consulta}"}]}]
+                        "contents": [{
+                            "parts": [{"text": f"Sos enfermero del Hospital Gutiérrez. Usá este contexto: {contexto}\n\nPregunta: {consulta}"}]
+                        }]
                     }
                     
                     response = requests.post(url, json=payload)
-                    data = response.json()
                     
-                    if response.status_code == 200:
-                        st.success("✅ Respuesta obtenida")
-                        st.write(data['candidates'][0]['content']['parts'][0]['text'])
+                    # Verificamos si la respuesta no está vacía
+                    if response.text:
+                        data = response.json()
+                        if response.status_code == 200:
+                            st.success("✅ Protocolo encontrado:")
+                            st.write(data['candidates'][0]['content']['parts'][0]['text'])
+                        else:
+                            st.error(f"Error de Google: {data.get('error', {}).get('message')}")
                     else:
-                        st.error(f"Detalle técnico: {data.get('error', {}).get('message')}")
+                        st.error("El servidor de Google no envió datos. Intentá con una pregunta más corta.")
+                        
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error de conexión: {e}")
