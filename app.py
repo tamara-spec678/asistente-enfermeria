@@ -31,17 +31,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# TÍTULO CON EMOJI
+# TÍTULO PRINCIPAL
 st.title("Asistente de Enfermería 🏥")
 st.write("Consulta técnica basada en Guías de Práctica y Protocolos de Seguridad.")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 def extraer_datos_hospital():
-    """Busca y lee los PDFs cargados en GitHub"""
+    """Busca y lee los PDFs en el repositorio"""
     texto_total = ""
     archivos_en_carpeta = os.listdir('.')
-    # Palabras clave para identificar tus manuales y protocolos
+    # Palabras clave para identificar manuales de técnicas, procedimientos y drogas
     nombres_clave = ["Seguridad", "Guía", "292", "2023", "enfermeria", "drogas", "procedimientos", "tecnicas"]
     encontrados = []
 
@@ -56,13 +56,13 @@ def extraer_datos_hospital():
                 encontrados.append(archivo)
             except:
                 pass
-    # Limitamos el texto para que la respuesta sea más rápida
+    # Mantenemos un límite de caracteres para un procesamiento ágil
     return texto_total[:45000], encontrados
 
 if not api_key:
     st.error("Configuración pendiente: Falta la API Key en los Secrets.")
 else:
-    # Panel lateral para control de bibliografía
+    # Sidebar de control de bibliografía
     with st.sidebar:
         st.header("Bibliografía Activa")
         txt, lista = extraer_datos_hospital()
@@ -74,28 +74,31 @@ else:
             st.error("No se detectaron archivos PDF.")
 
     # Campo de consulta
-    consulta = st.text_input("Ingresá tu consulta técnica:", placeholder="Ej: Pasos para colocar una sonda, dilución de fármacos...")
+    consulta = st.text_input("Ingresá tu consulta técnica o duda sobre dosis:", placeholder="Ej: ¿La dosis de 10mg de aspirina para 2 años es correcta?")
 
     if st.button("Consultar"):
         if not consulta:
             st.warning("Por favor, ingresá una pregunta.")
         else:
-            with st.spinner("Consultando manuales..."):
+            with st.spinner("Verificando protocolos y dosis en los manuales..."):
                 try:
-                    # Detectar modelo disponible
+                    # Detección de modelo
                     res_models = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}").json()
                     modelo_activo = next((m['name'] for m in res_models.get('models', []) if 'gemini' in m['name'] and 'generateContent' in m['supportedGenerationMethods']), None)
                     
                     if modelo_activo and txt:
                         url = f"https://generativelanguage.googleapis.com/v1beta/{modelo_activo}:generateContent?key={api_key}"
                         
-                        # Instrucciones de comportamiento
+                        # INSTRUCCIONES REFORZADAS PARA SEGURIDAD CLÍNICA
                         instrucciones = (
-                            f"Actuá como un Asistente Técnico de Enfermería experto. "
+                            f"Actuá como un Asistente Técnico de Enfermería experto, enfocado en la seguridad del paciente pediátrico. "
                             f"Tu tono debe ser profesional, preciso y directo. "
                             f"USÁ ESTA BIBLIOGRAFÍA EXCLUSIVAMENTE: {txt}. "
-                            f"Si se consulta sobre un fármaco o técnica, detallá pasos, materiales y cuidados de forma esquemática. "
-                            f"Si la información no está en el texto, informá que no se encuentra en las guías cargadas. "
+                            f"Si la consulta implica dosis o seguridad de fármacos: "
+                            f"1. Buscá los rangos terapéuticos (mg/kg o por edad) en los textos provistos. "
+                            f"2. Compará la dosis consultada con el protocolo institucional. "
+                            f"3. Si hay una discrepancia o riesgo, resaltalo con claridad técnica. "
+                            f"4. Si la información no está en el texto, indicá que no se encuentran protocolos para esa dosis específica. "
                             f"Consulta: {consulta}"
                         )
                         
@@ -104,12 +107,12 @@ else:
                         data = response.json()
                         
                         if response.status_code == 200:
-                            st.markdown("### 📋 Información técnica:")
+                            st.markdown("### 📋 Información técnica y verificación:")
                             st.markdown(f'<div class="chat-bubble">{data["candidates"][0]["content"]["parts"][0]["text"]}</div>', unsafe_allow_html=True)
                         else:
-                            st.error("Error de comunicación con la IA.")
+                            st.error("Error en la comunicación con el servidor.")
                     elif not txt:
-                        st.error("No se pudo procesar la bibliografía.")
+                        st.error("Error: No se pudo procesar la bibliografía.")
                 except Exception as e:
                     st.error(f"Error técnico: {e}")
 
