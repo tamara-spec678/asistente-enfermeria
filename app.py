@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+import requests
 from pypdf import PdfReader
 import os
 
@@ -7,11 +7,8 @@ import os
 st.set_page_config(page_title="Asistente HNRG", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 
-# 1. Configuración de la API (Forma más simple posible)
-if "GOOGLE_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-else:
-    st.error("Falta la clave API en los Secrets.")
+# 1. Obtener la Clave API de los Secrets
+api_key = st.secrets.get("GOOGLE_API_KEY")
 
 def extraer_texto():
     texto_total = ""
@@ -28,18 +25,29 @@ def extraer_texto():
 consulta = st.text_input("¿Qué consulta técnica tenés?")
 
 if st.button("Consultar"):
-    if consulta:
-        with st.spinner("Buscando..."):
+    if not api_key:
+        st.error("Falta la clave API en los Secrets.")
+    elif consulta:
+        with st.spinner("Conectando con el servidor central..."):
             try:
                 contexto = extraer_texto()
-                # CAMBIO CLAVE: Usamos 'gemini-pro' que es el más compatible
-                model = genai.GenerativeModel('gemini-pro')
+                # CONEXIÓN DIRECTA POR HTTP (Bypass total de librerías)
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
-                prompt = f"Actuá como enfermero del HNRG. Usá este texto: {contexto}\n\nPregunta: {consulta}"
+                payload = {
+                    "contents": [{
+                        "parts": [{"text": f"Sos un enfermero experto del Hospital Gutiérrez. Respondé basándote en este texto: {contexto}\n\nPregunta: {consulta}"}]
+                    }]
+                }
                 
-                response = model.generate_content(prompt)
-                st.success("Respuesta:")
-                st.write(response.text)
+                response = requests.post(url, json=payload)
+                result = response.json()
+                
+                if response.status_code == 200:
+                    respuesta_ia = result['candidates'][0]['content']['parts'][0]['text']
+                    st.success("Respuesta del Asistente:")
+                    st.write(respuesta_ia)
+                else:
+                    st.error(f"Error de Google: {result['error']['message']}")
             except Exception as e:
-                # Esto nos va a decir exactamente qué versión está fallando ahora
-                st.error(f"Error: {e}")
+                st.error(f"Ocurrió un error: {e}")
