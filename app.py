@@ -4,46 +4,45 @@ from pypdf import PdfReader
 import os
 
 # Configuración de la página
-st.set_page_config(page_title="Asistente HNRG - Tamara", page_icon="🏥", layout="wide")
+st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥", layout="wide")
 
-# Estilo visual "Chat de Guardia"
+# Estilo visual profesional y limpio
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { 
-        background-color: #28a745; 
+        background-color: #1e4f8a; 
         color: white; 
         font-weight: bold; 
-        border-radius: 20px;
+        border-radius: 10px;
         width: 100%;
         height: 3em;
     }
     .chat-bubble { 
         padding: 20px; 
-        border-radius: 15px; 
+        border-radius: 10px; 
         background-color: #ffffff; 
-        border-left: 6px solid #28a745;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+        border-left: 6px solid #1e4f8a;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.05);
         color: #333;
     }
+    h1 { color: #1e4f8a; }
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='color: #1e4f8a;'>🏥 ¡Hola Tamara!</h1>", unsafe_allow_html=True)
+st.title("🏥 Asistente de Enfermería")
+st.write("Consulta técnica basada en protocolos institucionales del HNRG.")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 def extraer_datos_hospital():
-    """Busca los PDFs sin importar si el nombre tiene signos raros"""
+    """Busca y lee los PDFs en el repositorio"""
     texto_total = ""
-    archivos_en_carpeta = os.listdir('.') # Listamos todo lo que hay en el GitHub
-    
-    # Estos son los fragmentos clave de tus nombres de archivo
+    archivos_en_carpeta = os.listdir('.')
     nombres_clave = ["Seguridad", "Guía", "292", "2023"]
     encontrados = []
 
     for archivo in archivos_en_carpeta:
-        # Si el archivo es PDF y coincide con alguna de nuestras palabras clave
         if archivo.lower().endswith('.pdf') and any(clave.lower() in archivo.lower() for clave in nombres_clave):
             try:
                 reader = PdfReader(archivo)
@@ -54,44 +53,43 @@ def extraer_datos_hospital():
                 encontrados.append(archivo)
             except:
                 pass
-    
     return texto_total[:45000], encontrados
 
 if not api_key:
-    st.error("⚠️ No hay API Key cargada en los Secrets.")
+    st.error("Configuración pendiente: Falta la API Key.")
 else:
-    # Sidebar de diagnóstico (Solo para que vos veas si cargó los archivos)
+    # Sidebar de control interno
     with st.sidebar:
-        st.header("🩺 Triage del Sistema")
+        st.header("Estado del Sistema")
         txt, lista = extraer_datos_hospital()
         if lista:
-            st.success(f"Archivos leídos: {len(lista)}")
-            for l in lista: st.write(f"✅ {l}")
+            st.success(f"Protocolos activos: {len(lista)}")
         else:
-            st.error("❌ No encontré los PDFs en GitHub.")
-            st.write("Archivos vistos:", os.listdir('.'))
+            st.error("No se detectaron archivos PDF.")
 
-    consulta = st.text_input("¿Qué duda tenés del turno?", placeholder="Ej: ¿Cómo paso la dipirona?")
+    consulta = st.text_input("Ingresá tu consulta técnica:", placeholder="Ej: Dilución de fármacos, protocolos de seguridad...")
 
-    if st.button("Sacame la duda 🚀"):
+    if st.button("Consultar"):
         if not consulta:
-            st.warning("Escribí algo primero, Tami.")
+            st.warning("Por favor, ingresá una pregunta.")
         else:
-            with st.spinner("Bancame que busco en los papeles..."):
+            with st.spinner("Consultando bibliografía..."):
                 try:
-                    # Detectamos el modelo activo
+                    # Detección automática del modelo activo
                     res_models = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}").json()
                     modelo_activo = next((m['name'] for m in res_models.get('models', []) if 'gemini' in m['name'] and 'generateContent' in m['supportedGenerationMethods']), None)
                     
                     if modelo_activo and txt:
                         url = f"https://generativelanguage.googleapis.com/v1beta/{modelo_activo}:generateContent?key={api_key}"
                         
+                        # INSTRUCCIONES: Tono amigable pero profesional, directo y técnico
                         instrucciones = (
-                            f"Actuá como un enfermero experto del HNRG. Hablale a tu colega Tamara de forma coloquial y cercana. "
-                            f"USÁ ESTA BIBLIOGRAFÍA: {txt}. "
-                            f"Si te preguntan por una droga o protocolo, buscá los pasos exactos (dilución, tiempo, cuidados). "
-                            f"Si no está, decí: 'Che Tami, no lo encuentro en la guía, fijate si está bien escrito'."
-                            f"Duda: {consulta}"
+                            f"Actuá como un Asistente Técnico de Enfermería del Hospital Gutiérrez. "
+                            f"Tu tono debe ser profesional, amigable y directo. Evitá saludos largos o lenguaje demasiado informal (no uses 'che' ni 'buen día'). "
+                            f"Respondé basándote EXCLUSIVAMENTE en esta información: {txt}. "
+                            f"Si la consulta es sobre un fármaco, detallá dilución, tiempos y cuidados de forma esquemática. "
+                            f"Si la información no está en el texto, informá que no se encuentra en los protocolos actuales. "
+                            f"Consulta: {consulta}"
                         )
                         
                         payload = {"contents": [{"parts": [{"text": instrucciones}]}]}
@@ -99,14 +97,14 @@ else:
                         data = response.json()
                         
                         if response.status_code == 200:
-                            st.markdown("### 📝 Lo que dice el protocolo:")
+                            st.markdown("### 📝 Información técnica:")
                             st.markdown(f'<div class="chat-bubble">{data["candidates"][0]["content"]["parts"][0]["text"]}</div>', unsafe_allow_html=True)
                         else:
-                            st.error("Google se tildó. Probá de nuevo.")
+                            st.error("Error en la comunicación con el servidor de IA.")
                     elif not txt:
-                        st.error("No puedo responder porque no logré leer los PDFs en GitHub.")
+                        st.error("Error: Los protocolos no pudieron ser leídos correctamente.")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error técnico: {e}")
 
 st.markdown("---")
-st.caption("Prototipo para Concurso Docente HNRG")
+st.caption("Herramienta de soporte técnico para el Hospital de Niños Ricardo Gutiérrez.")
