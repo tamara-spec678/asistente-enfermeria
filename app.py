@@ -3,53 +3,47 @@ import google.generativeai as genai
 from pypdf import PdfReader
 import os
 
-# --- CONFIGURACIÓN DE TUS ARCHIVOS ---
-archivo_1 = "Guía de Administración de drogas HNRG 2023 (5) (1).pdf"
-archivo_2 = "292+-+300+Seguridad+del+paciente.pdf"
-
-st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥")
-
+# Configuración básica
+st.set_page_config(page_title="Asistente HNRG", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
-st.info("Protocolos HNRG y Seguridad del Paciente")
 
-# CONFIGURACIÓN DE LA IA (BYPASS DE ERROR 404)
+# 1. Configurar la Clave
 if "GOOGLE_API_KEY" in st.secrets:
-    # Forzamos la configuración para que NO use v1beta
-    from google.generativeai import client
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    # Esta línea "mágica" cambia la ruta de conexión a la estable
-    client._client_manager.default_client_options = {'api_version': 'v1'}
 else:
-    st.error("Falta la clave API en los Secrets de Streamlit.")
+    st.error("Falta la clave API en Secrets.")
 
-def leer_protocolos():
-    texto = ""
-    archivos_presentes = 0
-    for nombre_archivo in [archivo_1, archivo_2]:
-        if os.path.exists(nombre_archivo):
+# 2. Función para leer PDFs
+def extraer_texto():
+    texto_total = ""
+    # Asegurate que estos nombres sean EXACTOS a los de tus archivos en GitHub
+    archivos = ["Guía de Administración de drogas HNRG 2023 (5) (1).pdf", "292+-+300+Seguridad+del+paciente.pdf"]
+    for arc in archivos:
+        if os.path.exists(arc):
             try:
-                reader = PdfReader(nombre_archivo)
-                for page in reader.pages:
-                    texto += (page.extract_text() or "") + "\n"
-                archivos_presentes += 1
-            except Exception as e:
-                st.error(f"Error al leer {nombre_archivo}: {e}")
-    return texto, archivos_presentes
+                pdf = PdfReader(arc)
+                for pagina in pdf.pages:
+                    texto_total += (pagina.extract_text() or "") + "\n"
+            except Exception:
+                pass
+    return texto_total
 
-pregunta = st.text_input("¿Qué duda técnica tenés?", placeholder="Ej: Dilución de fármacos...")
+# 3. Interfaz
+consulta = st.text_input("Escribí tu duda técnica (ej: Dilución de dopamina):")
 
 if st.button("Consultar Protocolos"):
-    if pregunta:
-        with st.spinner("Buscando en los protocolos..."):
+    if consulta:
+        with st.spinner("Buscando en los archivos del hospital..."):
             try:
-                contexto, cantidad = leer_protocolos()
-                if cantidad == 0:
-                    st.error("Archivos no encontrados. Revisá que estén subidos a GitHub.")
+                contexto = extraer_texto()
+                if not contexto:
+                    st.error("No se pudo leer el contenido de los PDFs. Revisá los nombres en GitHub.")
                 else:
-                    # Usamos el nombre base sin prefijos
+                    # Usamos el modelo estable
                     model = genai.GenerativeModel('gemini-1.5-flash')
-                    response = model.generate_content(f"Usa esto: {contexto}\nPregunta: {pregunta}")
-                    st.markdown("### 📋 Respuesta:")
+                    prompt = f"Actuá como un enfermero tutor del HNRG. Basándote en esto: {contexto}\n\nPregunta: {consulta}"
+                    response = model.generate_content(prompt)
+                    st.success("Resultado:")
                     st.write(response.text)
             except Exception as e:
-                st.error(f"Error técnico: {e}")
+                st.error(f"Error: {e}")
