@@ -3,67 +3,63 @@ import requests
 from pypdf import PdfReader
 import os
 
-st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥", layout="wide")
-
-# Estilo visual
-st.markdown("""
-    <style>
-    .stButton>button { background-color: #1e4f8a; color: white; font-weight: bold; border-radius: 10px; width: 100%; height: 3em; }
-    .chat-bubble { padding: 20px; border-radius: 12px; background-color: #ffffff; border-left: 6px solid #1e4f8a; box-shadow: 2px 2px 8px rgba(0,0,0,0.05); color: #333; }
-    </style>
-    """, unsafe_allow_html=True)
+st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥")
 
 st.title("Asistente de Enfermería 🏥")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 @st.cache_data(ttl=3600)
-def extraer_todo_el_manual():
-    texto_total = ""
+def cargar_biblioteca():
+    """Lee los archivos una sola vez y los guarda en la memoria de la app"""
+    biblioteca = []
     archivos = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
-    encontrados = []
     for archivo in archivos:
         try:
             reader = PdfReader(archivo)
             for page in reader.pages:
-                content = page.extract_text()
-                if content: texto_total += content + " "
-            encontrados.append(archivo)
+                texto = page.extract_text()
+                if texto:
+                    biblioteca.append(texto)
         except: pass
-    # Límite de 40k: Es mucho texto pero no tanto como para que la clave gratuita explote
-    return texto_total[:40000], encontrados
+    return biblioteca
 
 if not api_key:
     st.error("Falta la API Key.")
 else:
-    with st.sidebar:
-        st.header("Bibliografía")
-        txt, lista = extraer_todo_el_manual()
-        for d in lista: st.caption(f"✅ {d}")
-
-    consulta = st.text_input("Ingresá tu consulta técnica:")
+    # Cargamos los datos en silencio
+    datos = cargar_biblioteca()
+    
+    consulta = st.text_input("Ingresá tu duda (ej: Dosis Dipirona):")
 
     if st.button("Consultar"):
-        if consulta and txt:
-            with st.spinner("Buscando en manuales..."):
+        if consulta:
+            with st.spinner("Buscando información específica..."):
+                # BUSQUEDA INTELIGENTE: Solo mandamos a la IA las páginas que mencionan la duda
+                palabra_clave = consulta.split()[0].lower()
+                contexto_relevante = ""
+                for pagina in datos:
+                    if palabra_clave in pagina.lower():
+                        contexto_relevante += pagina + " "
+                        if len(contexto_relevante) > 10000: break # No nos pasamos del límite
+                
+                if not contexto_relevante:
+                    # Si no encuentra la palabra, le mandamos un pedacito general
+                    contexto_relevante = " ".join(datos)[:5000]
+
                 try:
-                    # Usamos el modelo 1.5-flash: es RÁPIDO y aguanta más preguntas seguidas
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-                    
-                    prompt = (
-                        f"Sos un Asistente Técnico de Enfermería. Basate solo en este texto: {txt}. "
-                        f"Consulta: {consulta}. Si es una dosis, comparala y da la respuesta exacta del manual. "
-                        f"Si no está, decilo profesionalmente."
-                    )
-                    
-                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                    payload = {
+                        "contents": [{
+                            "parts": [{"text": f"Contexto: {contexto_relevante}\n\nPregunta: {consulta}\n\nResponde como enfermero experto de forma breve."}]
+                        }]
+                    }
                     response = requests.post(url, json=payload)
                     data = response.json()
                     
                     if "candidates" in data:
-                        respuesta = data["candidates"][0]["content"]["parts"][0]["text"]
-                        st.markdown(f'<div class="chat-bubble">{respuesta}</div>', unsafe_allow_html=True)
+                        st.info(data["candidates"][0]["content"]["parts"][0]["text"])
                     else:
-                        st.warning("Google pide un respiro (60 segundos). Esperá un ratito y volvé a intentar.")
+                        st.warning("⚠️ Google está saturado. Esperá 20 segundos y reintentá.")
                 except:
                     st.error("Error de conexión.")
