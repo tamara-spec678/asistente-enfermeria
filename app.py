@@ -5,58 +5,50 @@ import os
 
 st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥")
 
-st.markdown("""
-    <style>
-    .stButton>button { background-color: #1e4f8a; color: white; font-weight: bold; border-radius: 10px; width: 100%; }
-    .chat-bubble { padding: 20px; border-radius: 12px; background-color: #ffffff; border-left: 6px solid #1e4f8a; box-shadow: 2px 2px 8px rgba(0,0,0,0.05); color: #333; }
-    </style>
-    """, unsafe_allow_html=True)
-
 st.title("Asistente de Enfermería 🏥")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 @st.cache_data(ttl=3600)
-def extraer_datos_hospital():
-    texto_total = ""
-    # Buscamos todos los PDFs
+def extraer_datos_optimizados(busqueda=""):
+    texto_relevante = ""
     archivos = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
     encontrados = []
 
     for archivo in archivos:
         try:
             reader = PdfReader(archivo)
-            # Para no saturar la clave gratuita, leemos lo más importante de cada manual
-            for i, page in enumerate(reader.pages):
-                if i > 60: break # Si el manual tiene más de 60 páginas, cortamos para que no de error
+            for page in reader.pages:
                 content = page.extract_text()
-                if content: texto_total += content + " "
+                if content:
+                    # SI NO HAY BUSQUEDA, TOMAMOS UN POCO DE CADA PAGINA
+                    # SI HAY BUSQUEDA, SOLO TOMAMOS DONDE APARECE LA PALABRA
+                    if not busqueda or busqueda.lower() in content.lower():
+                        texto_relevante += content + " "
             encontrados.append(archivo)
         except: pass
-    # Límite de seguridad para que la clave gratuita de Google NO rechace el pedido
-    return texto_total[:35000], encontrados
+    
+    # LIMITAMOS A 15.000 CARACTERES (Súper liviano para que la clave gratuita vuele)
+    return texto_relevante[:15000], encontrados
 
 if not api_key:
-    st.error("Falta la configuración de la clave API.")
+    st.error("Configurá la API Key.")
 else:
-    with st.sidebar:
-        st.header("Bibliografía")
-        txt_bibliografia, lista_docs = extraer_datos_hospital()
-        for d in lista_docs: st.caption(f"✅ {d}")
-
-    consulta = st.text_input("Ingresá tu duda técnica:")
+    consulta = st.text_input("Ingresá fármaco o técnica (ej: Dipirona):")
 
     if st.button("Consultar"):
-        if consulta and txt_bibliografia:
-            with st.spinner("Buscando respuesta..."):
+        if consulta:
+            with st.spinner("Buscando de forma ultra-rápida..."):
+                # Primero extraemos solo lo que sirve para esa consulta
+                txt_recortado, lista = extraer_datos_optimizados(consulta.split()[0]) # Busca la primera palabra
+                
                 try:
-                    # Usamos el modelo estándar que acepta tu clave
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
                     
                     payload = {
                         "contents": [{
                             "parts": [{
-                                "text": f"Contexto técnico: {txt_bibliografia}\n\nPregunta: {consulta}\n\nResponde de forma corta y profesional usando el contexto."
+                                "text": f"Basado en este fragmento del manual: {txt_recortado}. Respondé de forma muy breve a: {consulta}"
                             }]
                         }]
                     }
@@ -66,8 +58,10 @@ else:
                     
                     if "candidates" in data:
                         res = data["candidates"][0]["content"]["parts"][0]["text"]
-                        st.markdown(f'<div class="chat-bubble">{res}</div>', unsafe_allow_html=True)
+                        st.info(res)
                     else:
-                        st.warning("La clave gratuita está saturada. Intentá con una pregunta más corta o reintentá en un minuto.")
+                        st.error("Google sigue pidiendo un respiro. Esperá 30 segundos y probá de nuevo.")
                 except:
-                    st.error("Error de conexión con Google.")
+                    st.error("Error de conexión.")
+
+st.sidebar.caption("Modo de bajo consumo de datos activo.")
