@@ -3,45 +3,30 @@ import requests
 from pypdf import PdfReader
 import os
 
-# Configuración de la página
 st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥", layout="wide")
 
-# Estilo visual profesional
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { 
-        background-color: #1e4f8a; 
-        color: white; 
-        font-weight: bold; 
-        border-radius: 10px;
-        width: 100%;
-        height: 3em;
+        background-color: #1e4f8a; color: white; font-weight: bold; border-radius: 10px; width: 100%; height: 3em;
     }
     .chat-bubble { 
-        padding: 20px; 
-        border-radius: 12px; 
-        background-color: #ffffff; 
-        border-left: 6px solid #1e4f8a;
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.05);
-        color: #333;
-        line-height: 1.6;
+        padding: 20px; border-radius: 12px; background-color: #ffffff; border-left: 6px solid #1e4f8a;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.05); color: #333; line-height: 1.6;
     }
-    h1 { color: #1e4f8a; }
     </style>
     """, unsafe_allow_html=True)
 
-# TÍTULO PRINCIPAL
 st.title("Asistente de Enfermería 🏥")
-st.write("Consulta técnica basada en Guías de Práctica y Protocolos de Seguridad.")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
+# Esta función ahora lee TODO el contenido pero lo guarda en memoria para que no tarde siempre
+@st.cache_data(ttl=3600)
 def extraer_datos_hospital():
-    """Busca y lee los PDFs en el repositorio"""
     texto_total = ""
     archivos_en_carpeta = os.listdir('.')
-    # Palabras clave para identificar manuales de técnicas, procedimientos y drogas
     nombres_clave = ["Seguridad", "Guía", "292", "2023", "enfermeria", "drogas", "procedimientos", "tecnicas"]
     encontrados = []
 
@@ -49,6 +34,7 @@ def extraer_datos_hospital():
         if archivo.lower().endswith('.pdf') and any(clave.lower() in archivo.lower() for clave in nombres_clave):
             try:
                 reader = PdfReader(archivo)
+                # LEER TODAS LAS PÁGINAS DEL PDF
                 for page in reader.pages:
                     content = page.extract_text()
                     if content:
@@ -56,65 +42,42 @@ def extraer_datos_hospital():
                 encontrados.append(archivo)
             except:
                 pass
-    # Mantenemos un límite de caracteres para un procesamiento ágil
-    return texto_total[:45000], encontrados
+    # Dejamos un límite generoso de 50.000 caracteres para que entre mucha info
+    return texto_total[:50000], encontrados
 
 if not api_key:
-    st.error("Configuración pendiente: Falta la API Key en los Secrets.")
+    st.error("Falta la API Key.")
 else:
-    # Sidebar de control de bibliografía
     with st.sidebar:
         st.header("Bibliografía Activa")
         txt, lista = extraer_datos_hospital()
         if lista:
-            st.success(f"Fuentes detectadas: {len(lista)}")
+            st.success(f"Archivos leídos: {len(lista)}")
             for doc in lista:
                 st.caption(f"✅ {doc}")
-        else:
-            st.error("No se detectaron archivos PDF.")
 
-    # Campo de consulta
-    consulta = st.text_input("Ingresá tu consulta técnica o duda sobre dosis:", placeholder="Ej: ¿La dosis de 10mg de aspirina para 2 años es correcta?")
+    consulta = st.text_input("Consulta técnica o dosis (Ej: Aspirina 10mg en 2 años):")
 
     if st.button("Consultar"):
-        if not consulta:
-            st.warning("Por favor, ingresá una pregunta.")
-        else:
-            with st.spinner("Verificando protocolos y dosis en los manuales..."):
+        if consulta:
+            with st.spinner("Buscando en todos los manuales..."):
                 try:
-                    # Detección de modelo
-                    res_models = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}").json()
-                    modelo_activo = next((m['name'] for m in res_models.get('models', []) if 'gemini' in m['name'] and 'generateContent' in m['supportedGenerationMethods']), None)
+                    # Usamos Gemini 1.5 Flash que es el más rápido procesando mucho texto
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                     
-                    if modelo_activo and txt:
-                        url = f"https://generativelanguage.googleapis.com/v1beta/{modelo_activo}:generateContent?key={api_key}"
-                        
-                        # INSTRUCCIONES REFORZADAS PARA SEGURIDAD CLÍNICA
-                        instrucciones = (
-                            f"Actuá como un Asistente Técnico de Enfermería experto, enfocado en la seguridad del paciente pediátrico. "
-                            f"Tu tono debe ser profesional, preciso y directo. "
-                            f"USÁ ESTA BIBLIOGRAFÍA EXCLUSIVAMENTE: {txt}. "
-                            f"Si la consulta implica dosis o seguridad de fármacos: "
-                            f"1. Buscá los rangos terapéuticos (mg/kg o por edad) en los textos provistos. "
-                            f"2. Compará la dosis consultada con el protocolo institucional. "
-                            f"3. Si hay una discrepancia o riesgo, resaltalo con claridad técnica. "
-                            f"4. Si la información no está en el texto, indicá que no se encuentran protocolos para esa dosis específica. "
-                            f"Consulta: {consulta}"
-                        )
-                        
-                        payload = {"contents": [{"parts": [{"text": instrucciones}]}]}
-                        response = requests.post(url, json=payload)
-                        data = response.json()
-                        
-                        if response.status_code == 200:
-                            st.markdown("### 📋 Información técnica y verificación:")
-                            st.markdown(f'<div class="chat-bubble">{data["candidates"][0]["content"]["parts"][0]["text"]}</div>', unsafe_allow_html=True)
-                        else:
-                            st.error("Error en la comunicación con el servidor.")
-                    elif not txt:
-                        st.error("Error: No se pudo procesar la bibliografía.")
-                except Exception as e:
-                    st.error(f"Error técnico: {e}")
-
-st.markdown("---")
-st.caption("Herramienta de soporte para la gestión del cuidado y seguridad del paciente.")
+                    instrucciones = (
+                        f"Sos un experto en enfermería pediátrica. Tu fuente es este texto: {txt}. "
+                        f"Si preguntan por una dosis, buscala en el texto y comparala con la consulta. "
+                        f"Responde de forma profesional, clara y directa. "
+                        f"Si no encontrás el dato exacto, decilo. Consulta: {consulta}"
+                    )
+                    
+                    payload = {"contents": [{"parts": [{"text": instrucciones}]}]}
+                    response = requests.post(url, json=payload)
+                    data = response.json()
+                    
+                    if response.status_code == 200:
+                        st.markdown("### 📋 Resultado de la verificación:")
+                        st.markdown(f'<div class="chat-bubble">{data["candidates"][0]["content"]["parts"][0]["text"]}</div>', unsafe_allow_html=True)
+                except:
+                    st.error("Hubo un problema al procesar la consulta.")
