@@ -1,14 +1,18 @@
 import streamlit as st
-import requests
+import google.generativeai as genai
 from pypdf import PdfReader
 import os
 
-# Configuración de página
+# Configuración de la página
 st.set_page_config(page_title="Asistente HNRG", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 
-# 1. Obtener la Clave API de los Secrets
-api_key = st.secrets.get("GOOGLE_API_KEY")
+# 1. CONFIGURACIÓN SEGÚN GUÍA OFICIAL
+if "GOOGLE_API_KEY" in st.secrets:
+    # Forzamos la conexión a la versión 1 (estable)
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"], transport='rest')
+else:
+    st.error("Falta la clave API en los Secrets.")
 
 def extraer_texto():
     texto_total = ""
@@ -16,38 +20,29 @@ def extraer_texto():
     for arc in archivos:
         if os.path.exists(arc):
             try:
-                reader = PdfReader(arc)
-                for page in reader.pages:
-                    texto_total += (page.extract_text() or "") + "\n"
+                pdf = PdfReader(arc)
+                for pagina in pdf.pages:
+                    texto_total += (pagina.extract_text() or "") + "\n"
             except: pass
     return texto_total
 
-consulta = st.text_input("¿Qué consulta técnica tenés?")
+consulta = st.text_input("¿Qué duda técnica tenés?")
 
 if st.button("Consultar"):
-    if not api_key:
-        st.error("Falta la clave API en los Secrets.")
-    elif consulta:
-        with st.spinner("Conectando con el servidor central..."):
+    if consulta:
+        with st.spinner("Conectando con Gemini..."):
             try:
                 contexto = extraer_texto()
-                # CONEXIÓN DIRECTA POR HTTP (Bypass total de librerías)
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                # Usamos el modelo flash que es el más moderno y compatible
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                payload = {
-                    "contents": [{
-                        "parts": [{"text": f"Sos un enfermero experto del Hospital Gutiérrez. Respondé basándote en este texto: {contexto}\n\nPregunta: {consulta}"}]
-                    }]
-                }
+                # Generamos el contenido
+                response = model.generate_content(
+                    f"Sos un enfermero experto del HNRG. Respondé basándote en esto: {contexto}\n\nPregunta: {consulta}"
+                )
                 
-                response = requests.post(url, json=payload)
-                result = response.json()
-                
-                if response.status_code == 200:
-                    respuesta_ia = result['candidates'][0]['content']['parts'][0]['text']
-                    st.success("Respuesta del Asistente:")
-                    st.write(respuesta_ia)
-                else:
-                    st.error(f"Error de Google: {result['error']['message']}")
+                st.success("Respuesta:")
+                st.write(response.text)
             except Exception as e:
-                st.error(f"Ocurrió un error: {e}")
+                st.error(f"Error detectado: {e}")
+                st.info("Si el error es 404, probaremos cambiar a 'gemini-1.0-pro' en el código.")
