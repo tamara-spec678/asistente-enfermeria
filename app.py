@@ -6,6 +6,7 @@ import os
 st.set_page_config(page_title="Asistente HNRG", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 
+# 1. Recuperar clave de Secrets
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 def extraer_texto():
@@ -24,17 +25,17 @@ consulta = st.text_input("¿Qué duda técnica tenés?")
 
 if st.button("Consultar Protocolos"):
     if not api_key:
-        st.error("Falta la clave API en Secrets.")
+        st.error("Falta la clave API en los Secrets de Streamlit.")
     elif consulta:
-        with st.spinner("Accediendo a la base de datos estable..."):
+        with st.spinner("Conectando con Google AI..."):
             try:
                 contexto = extraer_texto()
-                # USAMOS EL MODELO CON NOMBRE TÉCNICO COMPLETO (La llave maestra)
-                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.0-pro-001:generateContent?key={api_key}"
+                # LA URL QUE NO FALLA: v1beta + gemini-pro
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
                 
                 payload = {
                     "contents": [{
-                        "parts": [{"text": f"Actuá como enfermero del HNRG. Respondé basándote en: {contexto}\n\nPregunta: {consulta}"}]
+                        "parts": [{"text": f"Sos un enfermero experto del HNRG. Basándote en: {contexto}\n\nPregunta: {consulta}"}]
                     }]
                 }
                 
@@ -42,10 +43,11 @@ if st.button("Consultar Protocolos"):
                 data = response.json()
                 
                 if response.status_code == 200:
-                    st.success("✅ ¡Conexión lograda!")
+                    st.success("✅ ¡Por fin! Conexión establecida.")
                     st.write(data['candidates'][0]['content']['parts'][0]['text'])
                 else:
-                    # Este mensaje nos dirá si la clave está activa o no
-                    st.error(f"Error de Google: {data['error']['message']}")
+                    # Si esto da error, leemos el mensaje real
+                    error_msg = data.get('error', {}).get('message', 'Error desconocido')
+                    st.error(f"Nota del servidor: {error_msg}")
             except Exception as e:
-                st.error(f"Error de conexión: {e}")
+                st.error(f"Error de red: {e}")
