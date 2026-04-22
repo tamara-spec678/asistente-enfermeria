@@ -22,7 +22,6 @@ st.title("Asistente de Enfermería 🏥")
 
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
-# Esta función ahora lee TODO el contenido pero lo guarda en memoria para que no tarde siempre
 @st.cache_data(ttl=3600)
 def extraer_datos_hospital():
     texto_total = ""
@@ -34,7 +33,7 @@ def extraer_datos_hospital():
         if archivo.lower().endswith('.pdf') and any(clave.lower() in archivo.lower() for clave in nombres_clave):
             try:
                 reader = PdfReader(archivo)
-                # LEER TODAS LAS PÁGINAS DEL PDF
+                # Lee todo el contenido
                 for page in reader.pages:
                     content = page.extract_text()
                     if content:
@@ -42,42 +41,50 @@ def extraer_datos_hospital():
                 encontrados.append(archivo)
             except:
                 pass
-    # Dejamos un límite generoso de 50.000 caracteres para que entre mucha info
-    return texto_total[:50000], encontrados
+    # Bajamos apenas el límite para asegurar que la respuesta "entre" sin errores
+    return texto_total[:40000], encontrados
 
 if not api_key:
-    st.error("Falta la API Key.")
+    st.error("Falta la API Key en los Secrets de Streamlit.")
 else:
     with st.sidebar:
         st.header("Bibliografía Activa")
         txt, lista = extraer_datos_hospital()
         if lista:
-            st.success(f"Archivos leídos: {len(lista)}")
+            st.success(f"Archivos listos: {len(lista)}")
             for doc in lista:
                 st.caption(f"✅ {doc}")
 
-    consulta = st.text_input("Consulta técnica o dosis (Ej: Aspirina 10mg en 2 años):")
+    consulta = st.text_input("Hacé tu consulta técnica o de dosis:")
 
     if st.button("Consultar"):
         if consulta:
-            with st.spinner("Buscando en todos los manuales..."):
+            with st.spinner("Analizando manuales..."):
                 try:
-                    # Usamos Gemini 1.5 Flash que es el más rápido procesando mucho texto
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                    # Usamos la URL base más estable de Google
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
                     
-                    instrucciones = (
-                        f"Sos un experto en enfermería pediátrica. Tu fuente es este texto: {txt}. "
-                        f"Si preguntan por una dosis, buscala en el texto y comparala con la consulta. "
-                        f"Responde de forma profesional, clara y directa. "
-                        f"Si no encontrás el dato exacto, decilo. Consulta: {consulta}"
-                    )
+                    # Simplificamos el mensaje para que no haya errores de formato
+                    payload = {
+                        "contents": [{
+                            "parts": [{
+                                "text": f"Sos un enfermero experto. Usá este texto: {txt}. Consulta: {consulta}. Si es una dosis, comparala y decí si es correcta según el texto."
+                            }]
+                        }]
+                    }
                     
-                    payload = {"contents": [{"parts": [{"text": instrucciones}]}]}
                     response = requests.post(url, json=payload)
                     data = response.json()
                     
-                    if response.status_code == 200:
-                        st.markdown("### 📋 Resultado de la verificación:")
-                        st.markdown(f'<div class="chat-bubble">{data["candidates"][0]["content"]["parts"][0]["text"]}</div>', unsafe_allow_html=True)
-                except:
-                    st.error("Hubo un problema al procesar la consulta.")
+                    # Verificamos si la respuesta tiene el formato correcto
+                    if "candidates" in data:
+                        respuesta_final = data["candidates"][0]["content"]["parts"][0]["text"]
+                        st.markdown("### 📋 Verificación:")
+                        st.markdown(f'<div class="chat-bubble">{respuesta_final}</div>', unsafe_allow_html=True)
+                    else:
+                        st.error("La IA no pudo procesar esta consulta específica. Probá con otra pregunta.")
+                except Exception as e:
+                    st.error(f"Error técnico: Revisa la conexión o la API Key.")
+
+st.markdown("---")
+st.caption("Soporte para la gestión del cuidado - Hospital de Niños Ricardo Gutiérrez")
