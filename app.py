@@ -7,9 +7,9 @@ import os
 st.set_page_config(page_title="Asistente HNRG", page_icon="🏥")
 st.title("🏥 Asistente de Enfermería")
 
-# 1. CONFIGURACIÓN SEGÚN GUÍA OFICIAL
+# 1. CONFIGURACIÓN ESTABLE
 if "GOOGLE_API_KEY" in st.secrets:
-    # Forzamos la conexión a la versión 1 (estable)
+    # Mantenemos el transporte REST que es más seguro
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"], transport='rest')
 else:
     st.error("Falta la clave API en los Secrets.")
@@ -26,23 +26,23 @@ def extraer_texto():
             except: pass
     return texto_total
 
-consulta = st.text_input("¿Qué duda técnica tenés?")
+consulta = st.text_input("¿Qué consulta técnica tenés?")
 
-if st.button("Consultar"):
+if st.button("Consultar Protocolos"):
     if consulta:
-        with st.spinner("Conectando con Gemini..."):
+        with st.spinner("Conectando con el servidor..."):
             try:
                 contexto = extraer_texto()
-                # Usamos el modelo flash que es el más moderno y compatible
-                model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # Generamos el contenido
-                response = model.generate_content(
-                    f"Sos un enfermero experto del HNRG. Respondé basándote en esto: {contexto}\n\nPregunta: {consulta}"
-                )
+                # CAMBIO CRUCIAL: Usamos gemini-1.0-pro
+                # Este modelo es el que el error 404 suele aceptar cuando Flash falla
+                model = genai.GenerativeModel('gemini-1.0-pro')
+                
+                prompt = f"Actuá como enfermero del HNRG. Respondé basándote en: {contexto}\n\nPregunta: {consulta}"
+                
+                response = model.generate_content(prompt)
                 
                 st.success("Respuesta:")
                 st.write(response.text)
             except Exception as e:
-                st.error(f"Error detectado: {e}")
-                st.info("Si el error es 404, probaremos cambiar a 'gemini-1.0-pro' en el código.")
+                st.error(f"Error técnico: {e}")
