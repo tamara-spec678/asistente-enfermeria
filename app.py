@@ -9,7 +9,7 @@ st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { 
-        background-color: #1e4f8a; color: white; font-weight: bold; border-radius: 10px; width: 100%; height: 3em;
+        background-color: #1e4f8a; color: white; font-weight: bold; border-radius: 10px; width: 100%; height: 3.5em;
     }
     .chat-bubble { 
         padding: 20px; border-radius: 12px; background-color: #ffffff; border-left: 6px solid #1e4f8a;
@@ -25,66 +25,67 @@ api_key = st.secrets.get("GOOGLE_API_KEY")
 @st.cache_data(ttl=3600)
 def extraer_datos_hospital():
     texto_total = ""
-    archivos_en_carpeta = os.listdir('.')
-    nombres_clave = ["Seguridad", "Guía", "292", "2023", "enfermeria", "drogas", "procedimientos", "tecnicas"]
+    archivos_en_carpeta = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
+    # Palabras clave para filtrar tus manuales del Gutiérrez
+    claves = ["seguridad", "guía", "292", "2023", "enfermeria", "drogas", "procedimientos", "tecnicas"]
     encontrados = []
 
     for archivo in archivos_en_carpeta:
-        if archivo.lower().endswith('.pdf') and any(clave.lower() in archivo.lower() for clave in nombres_clave):
+        if any(c in archivo.lower() for c in claves):
             try:
                 reader = PdfReader(archivo)
-                # Lee todo el contenido
                 for page in reader.pages:
                     content = page.extract_text()
-                    if content:
-                        texto_total += content + " "
+                    if content: texto_total += content + " "
                 encontrados.append(archivo)
-            except:
-                pass
-    # Bajamos apenas el límite para asegurar que la respuesta "entre" sin errores
-    return texto_total[:40000], encontrados
+            except: pass
+    # Usamos un límite alto pero seguro para el modelo Flash
+    return texto_total[:100000], encontrados
 
 if not api_key:
-    st.error("Falta la API Key en los Secrets de Streamlit.")
+    st.error("Error: Configura la GOOGLE_API_KEY en Secrets.")
 else:
     with st.sidebar:
-        st.header("Bibliografía Activa")
-        txt, lista = extraer_datos_hospital()
-        if lista:
-            st.success(f"Archivos listos: {len(lista)}")
-            for doc in lista:
-                st.caption(f"✅ {doc}")
+        st.header("Bibliografía Cargada")
+        txt_bibliografia, lista_docs = extraer_datos_hospital()
+        if lista_docs:
+            st.success(f"Archivos listos: {len(lista_docs)}")
+            for d in lista_docs: st.caption(f"✅ {d}")
+        else:
+            st.warning("No se encontraron los manuales. Verifica los nombres de los archivos.")
 
-    consulta = st.text_input("Hacé tu consulta técnica o de dosis:")
+    consulta = st.text_input("Ingresá tu duda (ej: dosis de dipirona en 10 años):")
 
     if st.button("Consultar"):
-        if consulta:
-            with st.spinner("Analizando manuales..."):
+        if not consulta:
+            st.warning("Por favor escribí una pregunta.")
+        elif not txt_bibliografia:
+            st.error("No hay texto para analizar. Subí los PDFs a GitHub.")
+        else:
+            with st.spinner("Buscando en los manuales del hospital..."):
                 try:
-                    # Usamos la URL base más estable de Google
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+                    # Usamos el modelo 1.5-flash que es el más potente y rápido para PDF largos
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                     
-                    # Simplificamos el mensaje para que no haya errores de formato
-                    payload = {
-                        "contents": [{
-                            "parts": [{
-                                "text": f"Sos un enfermero experto. Usá este texto: {txt}. Consulta: {consulta}. Si es una dosis, comparala y decí si es correcta según el texto."
-                            }]
-                        }]
-                    }
+                    prompt_final = (
+                        f"Sos un experto en enfermería del Hospital Gutiérrez. "
+                        f"Basándote EXCLUSIVAMENTE en este texto: {txt_bibliografia}. "
+                        f"Respondé a la siguiente consulta de forma profesional y precisa: {consulta}. "
+                        f"Si preguntan por dosis, buscá la tabla correspondiente en el texto y decí los valores exactos."
+                    )
                     
+                    payload = {"contents": [{"parts": [{"text": prompt_final}]}]}
                     response = requests.post(url, json=payload)
                     data = response.json()
                     
-                    # Verificamos si la respuesta tiene el formato correcto
                     if "candidates" in data:
-                        respuesta_final = data["candidates"][0]["content"]["parts"][0]["text"]
-                        st.markdown("### 📋 Verificación:")
-                        st.markdown(f'<div class="chat-bubble">{respuesta_final}</div>', unsafe_allow_html=True)
+                        respuesta = data["candidates"][0]["content"]["parts"][0]["text"]
+                        st.markdown("### 📋 Resultado de la consulta:")
+                        st.markdown(f'<div class="chat-bubble">{respuesta}</div>', unsafe_allow_html=True)
                     else:
-                        st.error("La IA no pudo procesar esta consulta específica. Probá con otra pregunta.")
+                        st.error("La IA no pudo procesar esta consulta específica. Probá simplificando la pregunta.")
                 except Exception as e:
-                    st.error(f"Error técnico: Revisa la conexión o la API Key.")
+                    st.error(f"Error técnico de conexión. Reintentá en unos segundos.")
 
 st.markdown("---")
-st.caption("Soporte para la gestión del cuidado - Hospital de Niños Ricardo Gutiérrez")
+st.caption("Herramienta de soporte - Hospital de Niños Ricardo Gutiérrez")
