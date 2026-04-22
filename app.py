@@ -1,65 +1,64 @@
 import streamlit as st
-import requests
+import google.generativeai as genai
 from pypdf import PdfReader
 import os
 
 st.set_page_config(page_title="Asistente de Enfermería", page_icon="🏥")
 
 st.title("Asistente de Enfermería 🏥")
+st.caption("Hospital de Niños Ricardo Gutiérrez")
 
+# Configuración de la clave con la librería oficial
 api_key = st.secrets.get("GOOGLE_API_KEY")
+if api_key:
+    genai.configure(api_key=api_key)
 
 @st.cache_data(ttl=3600)
-def cargar_biblioteca():
-    """Lee los archivos una sola vez y los guarda en la memoria de la app"""
-    biblioteca = []
+def cargar_manuales():
+    texto_total = ""
     archivos = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
     for archivo in archivos:
         try:
             reader = PdfReader(archivo)
+            # Solo leemos texto, sin vueltas
             for page in reader.pages:
-                texto = page.extract_text()
-                if texto:
-                    biblioteca.append(texto)
+                t = page.extract_text()
+                if t: texto_total += t + " "
         except: pass
-    return biblioteca
+    # Un límite seguro para no "romper" la clave gratis
+    return texto_total[:30000]
 
 if not api_key:
-    st.error("Falta la API Key.")
+    st.error("Configurá la API Key en los Secrets.")
 else:
-    # Cargamos los datos en silencio
-    datos = cargar_biblioteca()
+    contexto_manual = cargar_manuales()
     
-    consulta = st.text_input("Ingresá tu duda (ej: Dosis Dipirona):")
+    consulta = st.text_input("¿Qué duda técnica tenés?")
 
     if st.button("Consultar"):
-        if consulta:
-            with st.spinner("Buscando información específica..."):
-                # BUSQUEDA INTELIGENTE: Solo mandamos a la IA las páginas que mencionan la duda
-                palabra_clave = consulta.split()[0].lower()
-                contexto_relevante = ""
-                for pagina in datos:
-                    if palabra_clave in pagina.lower():
-                        contexto_relevante += pagina + " "
-                        if len(contexto_relevante) > 10000: break # No nos pasamos del límite
-                
-                if not contexto_relevante:
-                    # Si no encuentra la palabra, le mandamos un pedacito general
-                    contexto_relevante = " ".join(datos)[:5000]
-
+        if consulta and contexto_manual:
+            with st.spinner("Buscando en protocolos..."):
                 try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-                    payload = {
-                        "contents": [{
-                            "parts": [{"text": f"Contexto: {contexto_relevante}\n\nPregunta: {consulta}\n\nResponde como enfermero experto de forma breve."}]
-                        }]
-                    }
-                    response = requests.post(url, json=payload)
-                    data = response.json()
+                    # Usamos la conexión oficial (más estable)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     
-                    if "candidates" in data:
-                        st.info(data["candidates"][0]["content"]["parts"][0]["text"])
+                    prompt = (
+                        f"Actuá como un asistente de enfermería del Hospital Gutiérrez. "
+                        f"Basate en este texto: {contexto_manual}. "
+                        f"Responde de forma concisa: {consulta}"
+                    )
+                    
+                    response = model.generate_content(prompt)
+                    
+                    if response.text:
+                        st.info(response.text)
                     else:
-                        st.warning("⚠️ Google está saturado. Esperá 20 segundos y reintentá.")
-                except:
-                    st.error("Error de conexión.")
+                        st.warning("No se obtuvo respuesta. Intentá nuevamente.")
+                
+                except Exception as e:
+                    if "429" in str(e):
+                        st.error("⚠️ Límite de Google alcanzado. Por favor, esperá 60 segundos literales sin tocar nada y probá de nuevo.")
+                    else:
+                        st.error(f"Error técnico: {e}")
+
+st.sidebar.caption("Versión con Conector Oficial de Google")
